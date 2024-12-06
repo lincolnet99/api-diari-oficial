@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-regulatorio-api
+  namespace: #{namespace}#
+spec:
+  replicas: #{replicas}#
+  selector:
+    matchLabels:
+      app: regulatorio-api
+  template:
+    metadata:
+      labels:
+        app: regulatorio-api
+    spec:
+      containers:
+      - name:  regulatorio-api-container
+        image: #{image}#:#{imageName}#
+        resources:
+          requests:
+            cpu: #{cpu}#
+            memory: #{memory}#
+          limits:
+            cpu: #{cpu-limits}#
+            memory: #{memory-limits}#
+        ports:
+        - containerPort: 80
+        env:
+        - name: TZ
+          value: America/Sao_Paulo
+        volumeMounts:
+        - name: config-appsettings
+          mountPath: /app/appsettings.json
+          subPath: appsettings.json
+      volumes:
+        - name: config-appsettings
+          configMap:
+            name: regulatorio-api-appsettings
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-regulatorio-api
+  namespace: #{namespace}#
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+  selector:
+    app: regulatorio-api
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-regulatorio-api
+  namespace: #{namespace}#
+  annotations:
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "PUT, GET, POST, OPTIONS, DELETE"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: #{rota}#.tecnobank.com.br
+    http:
+      paths:
+      - backend:
+          service:
+            name: service-regulatorio-api
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
+  tls:
+  - hosts:
+    - #{rota}#.tecnobank.com.br
+    secretName: tls-tecnobank

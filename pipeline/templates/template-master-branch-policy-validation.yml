@@ -1,0 +1,20 @@
+parameters:
+- name: allowedSourceBranchName
+  displayName: Allowed Source branch name
+  type: string
+
+jobs:
+- job: "source_branch_validation"
+  displayName: Source Branch Validation
+  pool: 
+    vmImage: windows-latest
+  steps:
+    - pwsh: |
+        if ('$(System.PullRequest.SourceBranch)' -ieq 'refs/heads/release' -or '$(System.PullRequest.SourceBranch)' -ieq 'refs/heads/fix-release') {
+          Write-Host "Source branch '$(System.PullRequest.SourceBranch)' is allowed"
+        } else {
+          Throw "Source branch '$(System.PullRequest.SourceBranch)' is not allowed. Only the 'release' branch is allowed."
+          exit 1
+        }
+      displayName: "Check Build Source Branch"
+      errorActionPreference: Stop

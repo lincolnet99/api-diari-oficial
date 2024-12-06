@@ -1,0 +1,32 @@
+parameters:
+- name: environment
+  type: string
+- name: kubernetesEndpoint
+  type: string
+
+jobs:
+  - deployment: 'destroy_feature'
+    displayName: 'Destroy Feature PR Develop'
+    environment: ${{ parameters.environment }}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: Kubernetes@1
+            continueOnError: true
+            inputs:
+              connectionType: 'Kubernetes Service Connection'
+              kubernetesServiceEndpoint: ${{ parameters.kubernetesEndpoint }}
+              command: 'delete'
+              arguments: 'namespace $(namespace)'
+              secretType: 'dockerRegistry'
+              containerRegistryType: 'Azure Container Registry'
+
+          - task: Bash@3
+            condition: failed() 
+            continueOnError: true
+            inputs:
+              targetType: 'inline'
+              script: 'kubectl delete namespace $(namespace)'
+
+  

@@ -1,0 +1,15 @@
+parameters:
+- name: variableService
+  type: string
+- name: variableDb
+  type: string
+- name: variableCert
+  type: string
+- name: variableResource
+  type: string
+
+variables:
+- group: ${{ parameters.variableService }}
+- group: ${{ parameters.variableDb }}
+- group: ${{ parameters.variableCert }}
+- group: ${{ parameters.variableResource }}

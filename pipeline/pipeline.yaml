@@ -1,0 +1,325 @@
+trigger:
+
+  tags:
+    include:
+    - 'v*.*.**'
+
+  branches:
+    include:
+    - refs/heads/feature/*
+    - refs/heads/develop
+    - refs/heads/release
+    - refs/heads/fix-release
+
+    exclude:
+    - master
+    
+  paths:
+    include:
+    - app
+
+pr:
+  - develop
+
+variables:
+  artifactNameApp: 'artifact-to-container'
+  artifactPathApp: '$(Build.SourcesDirectory)/app/src/Regulatorio.API/bin/Release/net7.0'
+  artifactNameInfra: 'infra-files'
+  artifactPathInfra: '$(Build.SourcesDirectory)/infra/'
+  sonarProjectKey: 'tecnobanksa-interno_regulatorio_api'
+  sonarProjectName: 'regulatorio_api'
+  sonarSources: app/Regulatorio.API
+  dockerfilePath: 'infra/dockerfile'
+  variableDb: 'DbCredential'
+  variableCert: 'cert'
+
+  ${{ if startsWith(variables['Build.SourceBranch'], 'refs/heads/feature/') }}:
+    featBranchName: $[ replace(variables['Build.SourceBranch'], 'refs/heads/feature/', '') ]
+    namespace_temp: $[ replace(variables['Build.SourceBranch'], 'refs/heads/feature/', '') ]
+    namespace: 'regulatorio-api-$(namespace_temp)'
+    imageName: '$(Build.BuildId)'
+    image: 'tbkacrdev250.azurecr.io/regulatorio-api'
+    acrName: 'tbkacrdev250'
+    dockerfile: 'Dockerfile.dev'
+    environment: 'regulatorio-api-feat'
+    kubernetesEndpoint: 'tbk-aks-dev-250'
+    configMapName: 'regulatorio-api-appsettings'
+    variableService: 'regulatorio-api-feat'
+    variableResource: 'resources-dev'
+
+  ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+    namespace_temp: $[ replace(variables['System.PullRequest.SourceBranch'], 'refs/heads/feature/', '') ]
+    namespace: 'regulatorio-api-$(namespace_temp)'
+    image: 'tbkacrdev250.azurecr.io/regulatorio-api'
+    dockerfile: 'Dockerfile.dev'
+    environment: 'regulatorio-api-tst'
+    namespaceDev: novoportal-dev
+    repository: regulatorio-api
+    acrName: tbkacrdev250
+    kubernetesEndpoint: tbk-aks-dev-250
+    configMapName: regulatorio-api-appsettings
+    renDeployment: regulatorio-api
+    variableService: 'regulatorio-api-dev'
+    variableResource: 'resources-dev'
+
+  ${{ if startsWith(variables['Build.SourceBranch'], 'refs/heads/develop') }}:
+    imageName: '$(Build.BuildId)'
+    image: 'tbkacrhml001.azurecr.io/regulatorio-api'
+    acrName: 'tbkacrhml001'
+    dockerfile: 'Dockerfile.tst'
+    environment: 'regulatorio-api-tst'
+    kubernetesEndpoint: 'tbk-aks-hml-250'
+    configMapName: 'regulatorio-api-appsettings'
+    variableService: 'regulatorio-api-tst'
+    variableResource: 'resources-tst-hml'
+
+  ${{ if startsWith(variables['Build.SourceBranch'], 'refs/heads/release') }}:
+    imageName: '$(Build.BuildId)'
+    image: 'tbkacrhml001.azurecr.io/regulatorio-api'
+    acrName: 'tbkacrhml001'
+    dockerfile: 'Dockerfile.hml'
+    SourceBranchName: 'release'
+    environment: 'regulatorio-api-hml'
+    kubernetesEndpoint: 'tbk-aks-hml-250'
+    configMapName: 'regulatorio-api-appsettings'
+    variableService: 'regulatorio-api-hml'
+    variableResource: 'resources-tst-hml'
+
+  ${{ if startsWith(variables['Build.SourceBranch'], 'refs/heads/fix-release') }}:
+    imageName: '$(Build.BuildId)'
+    image: 'tbkacrhml001.azurecr.io/regulatorio-api'
+    acrName: 'tbkacrhml001'
+    dockerfile: 'Dockerfile.hml'
+    SourceBranchName: 'fix-release'
+    environment: 'regulatorio-api-hml'
+    kubernetesEndpoint: 'tbk-aks-hml-250'
+    configMapName: 'regulatorio-api-appsettings'
+    variableService: 'regulatorio-api-hml'
+    variableResource: 'resources-tst-hml'
+
+  ${{ if startsWith(variables['Build.SourceBranch'], 'refs/tags') }}:
+    imageName: $[ replace(variables['Build.SourceBranch'], 'refs/tags/', '') ]
+    image: 'tbkacrprd001.azurecr.io/regulatorio-api'
+    acrName: 'tbkacrprd001'
+    dockerfile: 'Dockerfile.prd'
+    environment: 'regulatorio-api-prd'
+    kubernetesEndpoint: 'tbk-aks-prd-250'
+    configMapName: 'regulatorio-api-appsettings'
+    namespace: 'novoportal-prd'
+    deployment: 'deployment/deploy-regulatorio-api'
+    variableService: 'regulatorio-api-prd'
+    variableResource: 'resources-prd'
+
+pool:
+  vmImage: ubuntu-latest
+#========================================================================================================
+stages:
+- stage: 'CI'
+  displayName: 'App Build'
+  condition:  ne(variables['Build.Reason'], 'PullRequest')
+  pool:
+    name: TBK_Builder
+  jobs:
+  - template: templates/template-build.yaml
+    parameters:
+      sonarProjectKey: ${{ variables.sonarProjectKey }}
+      sonarProjectName: ${{ variables.sonarProjectName }}
+      sonarSources: ${{ variables.sonarSources }}
+      artifactNameApp: ${{ variables.artifactNameApp }}
+      artifactPathApp: ${{ variables.artifactPathApp }}
+      artifactNameInfra: ${{ variables.artifactNameInfra }}
+      artifactPathInfra: ${{ variables.artifactPathInfra }}
+
+# Build Feature =====
+- stage: 'DockerBuildFeat'
+  displayName: 'Docker Build Feature'
+  condition:  and(succeeded(), ne(variables['featBranchName'], ''))
+  dependsOn: CI
+  jobs:
+  - template: templates/template-docker-build.yaml
+    parameters:
+      dockerfilePath: ${{ variables.dockerfilePath }}
+      artifactNameApp: ${{ variables.artifactNameApp }}
+      acrName: $(acrName)
+      imageName: $(imageName)
+      image: $(image)
+
+# Deploy Feature =====
+- stage: 'Feature_Deploys'
+  displayName: 'Feature: Deploy AKS'
+  condition: and(succeeded(), ne(variables['featBranchName'], ''))
+  dependsOn: 'DockerBuildFeat'
+  variables:
+  - template: templates/template-variables.yaml
+    parameters:
+      variableService: ${{ variables.variableService }}
+      variableDb: ${{ variables.variableDb }}
+      variableCert: ${{ variables.variableCert }}
+      variableResource: ${{ variables.variableResource }}
+  jobs:
+  - template: templates/template-deploy-feature.yaml
+    parameters:
+      environment: ${{ variables.environment }}
+      artifactNameInfra: ${{ variables.artifactNameInfra }}
+      kubernetesEndpoint: ${{ variables.kubernetesEndpoint }}
+      configMapName: ${{ variables.configMapName }}
+
+# Destroy Feature ====
+- stage: 'Feature_Destroy'
+  displayName: 'Feature: Destroy Feature PR Develop'
+  condition: and (eq(variables['System.PullRequest.TargetBranch'], 'refs/heads/develop') , eq(variables['Build.Reason'], 'PullRequest'))
+  jobs:
+  - template: templates/template-feature-destroy.yaml
+    parameters:
+      environment: ${{ variables.environment }}
+      kubernetesEndpoint: ${{ variables.kubernetesEndpoint }}
+
+# Deploy Desenv ====
+  - job:
+    displayName: "Deploy DEV"
+    variables:
+    - template: templates/template-variables.yaml
+      parameters:
+        variableService: ${{ variables.variableService }}
+        variableDb: ${{ variables.variableDb }}
+        variableCert: ${{ variables.variableCert }}
+        variableResource: ${{ variables.variableResource }}
+    steps: 
+    - template: templates/template-deploy-desenv.yaml
+      parameters: 
+        namespaceDev: ${{ variables.namespaceDev }}
+        repository: ${{ variables.repository }}
+        acrName: ${{ variables.acrName }}
+        kubernetesEndpoint: ${{ variables.kubernetesEndpoint }}
+        configMapName: ${{ variables.configMapName }}
+        renDeployment: ${{ variables.renDeployment }}
+
+# Build Develop ====
+- stage: 'DockerBuildDevelop'
+  displayName: 'Docker Build Develop'
+  condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), eq (variables['Build.SourceBranch'], 'refs/heads/develop'))
+  dependsOn: CI
+  jobs:
+  - template: templates/template-docker-build.yaml
+    parameters:
+      dockerfilePath: ${{ variables.dockerfilePath }}
+      artifactNameApp: ${{ variables.artifactNameApp }}
+      acrName: $(acrName)
+      imageName: $(imageName)
+      image: $(image)
+
+# Deploy Develop =====
+- stage: 'Develop_Deploys'
+  displayName: 'Develop: Deploy AKS'
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  dependsOn: 'DockerBuildDevelop'
+  variables:
+  - template: templates/template-variables.yaml
+    parameters:
+      variableService: ${{ variables.variableService }}
+      variableDb: ${{ variables.variableDb }}
+      variableCert: ${{ variables.variableCert }}
+      variableResource: ${{ variables.variableResource }}
+  jobs:
+  - template: templates/template-deploy.yaml
+    parameters:
+      environment: ${{ variables.environment }}
+      artifactNameInfra: ${{ variables.artifactNameInfra }}
+      kubernetesEndpoint: ${{ variables.kubernetesEndpoint }}
+      configMapName: ${{ variables.configMapName }}
+
+# Build Release =====
+- stage: 'DockerBuildRelease'
+  displayName: 'Docker Build Release'
+  condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), or(eq(variables['Build.SourceBranch'], 'refs/heads/fix-release'), eq(variables['Build.SourceBranch'], 'refs/heads/release')))
+  dependsOn: 'CI'
+  jobs:
+  - template: templates/template-docker-build.yaml
+    parameters:
+      dockerfilePath: ${{ variables.dockerfilePath }}
+      artifactNameApp: ${{ variables.artifactNameApp }}
+      acrName: $(acrName)
+      imageName: $(imageName)
+      image: $(image)
+
+# Deploy Release =====
+- stage: 'Release_Deploys'
+  displayName: 'Release: Deploy AKS'
+  condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/release'), eq(variables['Build.SourceBranch'], 'refs/heads/fix-release')))
+  dependsOn: 'DockerBuildRelease'
+  variables:
+  - template: templates/template-variables.yaml
+    parameters:
+      variableService: ${{ variables.variableService }}
+      variableDb: ${{ variables.variableDb }}
+      variableCert: ${{ variables.variableCert }}
+      variableResource: ${{ variables.variableResource }} 
+  jobs:
+  - template: templates/template-deploy.yaml
+    parameters:
+      environment: ${{ variables.environment }}
+      artifactNameInfra: ${{ variables.artifactNameInfra }}
+      kubernetesEndpoint: ${{ variables.kubernetesEndpoint }}
+      configMapName: ${{ variables.configMapName }}
+
+# Branch Validation ======
+- stage: 'BranchValidationMaster'
+  displayName: "Master: Branch Validation"
+  condition: and (eq(variables['System.PullRequest.TargetBranch'], 'refs/heads/master'), eq(variables['Build.Reason'], 'PullRequest'))
+  dependsOn: 'CI'
+  jobs:
+  - template: templates/template-master-branch-policy-validation.yml
+    parameters:
+      allowedSourceBranchName: ${{ variables.SourceBranchName }}
+
+# Build Master =====
+- stage: 'DockerBuildMaster'
+  displayName: 'Docker Build Master'
+  dependsOn: CI
+  condition: and(succeeded(), startsWith(variables['build.sourceBranch'], 'refs/tags/'), ne(variables['Build.Reason'], 'PullRequest'))
+  jobs:
+  - template: templates/template-docker-build.yaml
+    parameters:
+      dockerfilePath: ${{ variables.dockerfilePath }}
+      artifactNameApp: ${{ variables.artifactNameApp }}
+      acrName: $(acrName)
+      imageName: $(imageName)
+      image: $(image)
+
+# Deploy Master =====
+- stage: 'Master_Deploys'
+  displayName: 'Master: Deploy AKS'
+  condition: and(succeeded(), startsWith(variables['build.sourceBranch'], 'refs/tags/'))
+  dependsOn: 'DockerBuildMaster'
+  variables:
+  - template: templates/template-variables.yaml
+    parameters:
+      variableService: ${{ variables.variableService }}
+      variableDb: ${{ variables.variableDb }}
+      variableCert: ${{ variables.variableCert }}
+      variableResource: ${{ variables.variableResource }}
+  jobs:
+  - template: templates/template-deploy.yaml
+    parameters:
+      environment: ${{ variables.environment }}
+      artifactNameInfra: ${{ variables.artifactNameInfra }}
+      kubernetesEndpoint: ${{ variables.kubernetesEndpoint }}
+      configMapName: ${{ variables.configMapName }}
+#========================================================================================================
+- stage: 'Master_Rollback'
+  displayName: 'Master: Rollback'
+  condition: and(succeeded(), startsWith(variables['build.sourceBranch'], 'refs/tags/'))
+  variables:
+  - template: templates/template-variables.yaml
+    parameters:
+      variableService: ${{ variables.variableService }}
+      variableDb: ${{ variables.variableDb }}
+      variableCert: ${{ variables.variableCert }}
+      variableResource: ${{ variables.variableResource }}
+  jobs:
+  - template: templates/template-rollback.yaml
+    parameters:
+      environment: ${{ variables.environment }}
+      namespace: ${{ variables.namespace }}
+      kubernetesEndpoint: ${{ variables.kubernetesEndpoint }}
+      deployment: ${{ variables.deployment }}

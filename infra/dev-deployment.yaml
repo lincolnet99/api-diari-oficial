@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-regulatorio-api
+  namespace: #{namespace}#
+spec:
+  replicas: #{replicas}#
+  selector:
+    matchLabels:
+      app: regulatorio-api
+  template:
+    metadata:
+      labels:
+        app: regulatorio-api
+    spec:
+      containers:
+      - name:  regulatorio-api-container
+        image: #{image}#:#{imageName}#
+        resources:
+          requests:
+            cpu: #{cpu}#
+            memory: #{memory}#
+          limits:
+            cpu: #{cpu-limits}#
+            memory: #{memory-limits}#
+        env:
+        - name: TZ
+          value: America/Sao_Paulo
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: config-appsettings
+          mountPath: /app/appsettings.json
+          subPath: appsettings.json
+      volumes:
+        - name: config-appsettings
+          configMap:
+            name: regulatorio-api-appsettings
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-regulatorio-api
+  namespace: #{namespace}#
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+  selector:
+    app: regulatorio-api
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-regulatorio-api
+  namespace: #{namespace}#
+  annotations:
+    kubernetes.io/ingress.class: addon-http-application-routing
+spec:
+  rules:
+  - host: #{rota}#.2ef396cff58c48d2b094.eastus2.aksapp.io
+    http:
+      paths:
+      - backend:
+          service:
+            name: service-regulatorio-api
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
+  tls:
+  - hosts:
+    - #{rota}#.2ef396cff58c48d2b094.eastus2.aksapp.io
+    secretName: tls-tecnobank

@@ -1,0 +1,45 @@
+# Docker Build ====
+
+parameters:
+- name: dockerfilePath
+  type: string
+- name: artifactNameApp
+  type: string
+- name: acrName
+  type: string
+- name: imageName
+  type: string
+- name: image
+  type: string
+
+jobs:
+  - job: "Docker_build" 
+    displayName: 'Docker Build'
+    steps:
+    - task: Bash@3
+      inputs:
+        targetType: 'inline'
+        script: | 
+          mkdir $(Pipeline.Workspace)/dockerapp
+          cp $(Pipeline.Workspace)/s/${{ parameters.dockerfilePath }}/$(dockerfile) $(Pipeline.Workspace)/dockerapp/Dockerfile
+      
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        buildType: 'current'
+        artifactName: ${{ parameters.artifactNameApp }}
+        targetPath: '$(Pipeline.Workspace)/dockerapp'
+    
+    - task: Docker@2
+      displayName: 'Docker Login'
+      inputs:
+        containerRegistry: ${{ parameters.acrName }}
+        command: 'login'
+
+    - task: Bash@3
+      displayName: 'Docker Build e Push'
+      inputs:
+        targetType: 'inline'
+        script: |
+          docker build -t ${{ parameters.image }}:${{ parameters.imageName }} .
+          docker image push ${{ parameters.image }}:${{ parameters.imageName }}
+        workingDirectory: '$(Pipeline.Workspace)/dockerapp'

@@ -1,0 +1,99 @@
+parameters:
+  - name: environment
+    type: string
+  - name: artifactNameInfra
+    type: string
+  - name: kubernetesEndpoint
+    type: string
+  - name: configMapName
+    type: string
+
+jobs:
+- deployment: 'deploy_feature'
+  displayName: 'Create Deployment Azure Kubernetes Service'
+  environment: ${{ parameters.environment }}
+  strategy:
+    runOnce:
+      deploy:
+        steps:
+        - task: DownloadPipelineArtifact@2
+          inputs:
+            buildType: 'current'
+            artifactName: ${{ parameters.artifactNameInfra }}
+            targetPath: '$(Pipeline.Workspace)'
+          
+        - task: replacetokens@3
+          displayName: "Substituir variaveis deployment e namespace"
+          inputs:
+            rootDirectory: '$(Agent.BuildDirectory)'
+            targetFiles: '*.*'
+            encoding: 'auto'
+            writeBOM: true
+            actionOnMissing: 'warn'
+            keepToken: false
+            tokenPrefix: '#{'
+            tokenSuffix: '}#'
+            useLegacyPattern: false
+            enableTransforms: false
+            enableTelemetry: true
+          
+        - task: replacetokens@3
+          displayName: "Substituir variaveis configmap"
+          inputs:
+            rootDirectory: '$(Agent.BuildDirectory)/configmap'
+            targetFiles: '*.*'
+            encoding: 'auto'
+            writeBOM: true
+            actionOnMissing: 'warn'
+            keepToken: false
+            tokenPrefix: '#{'
+            tokenSuffix: '}#'
+            useLegacyPattern: false
+            enableTransforms: false
+            enableTelemetry: true
+          
+        - task: Kubernetes@1
+          inputs:
+            connectionType: 'Kubernetes Service Connection'
+            kubernetesServiceEndpoint: ${{ parameters.kubernetesEndpoint }}
+            command: 'apply'
+            useConfigurationFile: true
+            configuration: '$(Agent.BuildDirectory)/namespace.yaml'
+            secretType: 'dockerRegistry'
+            containerRegistryType: 'Azure Container Registry'
+        
+        - task: Kubernetes@1
+          displayName: 'create configmap'
+          inputs:
+            connectionType: 'Kubernetes Service Connection'
+            kubernetesServiceEndpoint: ${{ parameters.kubernetesEndpoint }}
+            namespace: '$(namespace)'
+            command: 
+            secretType: 'dockerRegistry'
+            containerRegistryType: 'Azure Container Registry'
+            configMapName: ${{ parameters.configMapName }}
+            forceUpdateConfigMap: true
+            useConfigMapFile: true
+            configMapFile: '$(Agent.BuildDirectory)/configmap/appsettings.json'
+
+        - task: Kubernetes@1
+          displayName: 'apply deployment'
+          inputs:
+            connectionType: 'Kubernetes Service Connection'
+            kubernetesServiceEndpoint: ${{ parameters.kubernetesEndpoint }}
+            command: 'apply'
+            useConfigurationFile: true
+            configuration: '$(Agent.BuildDirectory)/deployment.yaml'
+            secretType: 'dockerRegistry'
+            containerRegistryType: 'Azure Container Registry'
+
+        - task: Kubernetes@1
+          displayName: 'apply hpa'
+          inputs:
+            connectionType: 'Kubernetes Service Connection'
+            kubernetesServiceEndpoint: ${{ parameters.kubernetesEndpoint }}
+            command: 'apply'
+            useConfigurationFile: true
+            configuration: '$(Agent.BuildDirectory)/hpa.yaml'
+            secretType: 'dockerRegistry'
+            containerRegistryType: 'Azure Container Registry'

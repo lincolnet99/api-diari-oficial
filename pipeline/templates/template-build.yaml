@@ -1,0 +1,81 @@
+parameters:
+- name: sonarProjectKey
+  type: string
+- name: sonarProjectName
+  type: string
+- name: sonarSources
+  type: string
+- name: artifactNameApp
+  type: string
+- name: artifactPathApp
+  type: string
+- name: artifactNameInfra
+  type: string
+- name: artifactPathInfra
+  type: string
+
+jobs:
+  - job: "App_build" 
+    displayName: 'App Build'
+    steps:
+    - checkout: self
+      clean: true
+      fetchDepth: 1
+
+    - task: DotNetCoreCLI@2
+      displayName: 'dotnet clean'
+      inputs:
+        command: custom
+        #projects: '**/*.csproj'
+        projects: 'app/Regulatorio.sln'
+        custom: clean
+        arguments: '--nologo -v "m"'
+        workingDirectory: $(Build.SourcesDirectory)/app/
+
+    - task: DotNetCoreCLI@2
+      displayName: 'dotnet restore'
+      inputs:
+        command: restore
+        projects: 'app/Regulatorio.sln'
+        restoreArguments: '--nologo --interactive'
+        # workingDirectory: $(Build.SourcesDirectory)/app/
+        # feedRestore: d9077a02-57ae-48a2-ba8c-740d35c29b10/d61592b0-d08d-4a55-a692-295fac988013
+
+    - task: SonarSource.sonarcloud.14d9cde6-c1da-4d55-aa01-2965cd301255.SonarCloudPrepare@1
+      displayName: 'Prepare analysis on SonarCloud'
+      inputs:
+        SonarCloud: SonarCloud
+        organization: 'tecnobanksa-interno'
+        scannerMode: 'MSBuild'
+        projectKey: ${{ parameters.sonarProjectKey }}
+        projectName: ${{ parameters.sonarProjectName }}
+        extraProperties: |
+          sonar.sources = ${{ parameters.sonarSources }}
+          sonar.exclusions = **/infra/**, **/pipeline/**, **/Dockerfile*, **/appsettings.*.json, **/appsettings.json
+
+    - task: DotNetCoreCLI@2
+      displayName: 'dotnet build'
+      inputs:
+        projects: 'app/Regulatorio.sln'
+        arguments: '--nologo --no-restore -v "m" -maxcpucount --configuration Release'
+        workingDirectory: $(Build.SourcesDirectory)/app/
+
+    - task: SonarSource.sonarcloud.ce096e50-6155-4de8-8800-4221aaeed4a1.SonarCloudAnalyze@1
+      displayName: 'Run Code Analysis'
+
+    - task: SonarSource.sonarcloud.38b27399-a642-40af-bb7d-9971f69712e8.SonarCloudPublish@1
+      displayName: 'Publish Quality Gate Result'
+      inputs:
+        pollingTimeoutSec: '300'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish artifact files'
+      inputs:
+        PathtoPublish: ${{ parameters.artifactPathApp }}
+        artifactName: ${{ parameters.artifactNameApp }}
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish k8s files'
+      inputs:
+        PathtoPublish: ${{ parameters.artifactPathInfra }}
+        artifactName: ${{ parameters.artifactNameInfra }}

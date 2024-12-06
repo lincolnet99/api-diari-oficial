@@ -1,0 +1,29 @@
+parameters:
+  - name: environment
+    type: string
+  - name: namespace
+    type: string
+  - name: kubernetesEndpoint
+    type: string
+  - name: deployment
+    type: string
+
+jobs:
+  - deployment: 'master_rollback'
+    displayName: 'Rollback Deployment Azure Kubernetes Service'
+    timeoutInMinutes: 15
+    environment: ${{ parameters.environment }}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: Kubernetes@1
+            name: rollback
+            inputs:
+              connectionType: 'Kubernetes Service Connection'
+              kubernetesServiceEndpoint: ${{ parameters.kubernetesEndpoint }}
+              command: 'rollout'
+              arguments: 'undo ${{ parameters.deployment }}'
+              secretType: 'dockerRegistry'
+              containerRegistryType: 'Azure Container Registry'
+              namespace: ${{ parameters.namespace }}
